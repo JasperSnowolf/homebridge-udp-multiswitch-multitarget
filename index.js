@@ -14,12 +14,15 @@ function UdpMultiswitch(log, config) {
     this.log = log;
 
     this.name            = config.name || 'MultiSwitch';
-    this.switchType      = config.switch_type;           
-    this.host            = config.host;
+    this.switchType      = config.switch_type;
+    this.impulse         = config.impulse || false;      
+    this.hosts           = config.hosts;
     this.port            = config.port || 80;
 
     this.onPayload      = config.on_payload;
     this.offPayload     = config.off_payload;
+
+    this.statusPayload
 
     this.multiswitch     = config.multiswitch;
 
@@ -36,10 +39,11 @@ function UdpMultiswitch(log, config) {
 
 UdpMultiswitch.prototype = {
 
-    udpRequest: function(host, port, payload, callback) {
-        udp(host, port, payload, function (err) {
-            callback(err);
+    udpRequest: function(hosts, port, payload, callback) {
+        hosts.forEach(hostConfig => {
+            udp(hostConfig.host, port, payload, function (err) {});
         });
+        callback();
     },
 
     setPowerState: function(targetService, powerState, callback, context) {
@@ -61,6 +65,10 @@ UdpMultiswitch.prototype = {
                     this.log.warn('Ignoring request; No power state payloads defined.');
                     callback(new Error('No power state payloads defined.'));
                     return;
+                }
+
+                if (this.impulse) {
+                    targetService.getCharacteristic(Characteristic.On).setValue(false, undefined, funcContext);
                 }
 
                 payload  = powerState ? this.onPayload  : this.offPayload;
@@ -86,7 +94,7 @@ UdpMultiswitch.prototype = {
                 this.log('Unknown homebridge-udp-multiswitch type in setPowerState');
         }
 
-        this.udpRequest(this.host, this.port, payload, function(error) {
+        this.udpRequest(this.hosts, this.port, payload, function(error) {
             if (error) {
                 this.log.error('setPowerState failed: ' + error.message);
                 this.log('response: ' + response + '\nbody: ' + responseBody);
@@ -157,6 +165,10 @@ UdpMultiswitch.prototype = {
                     switchService
                         .getCharacteristic(Characteristic.On)
                         .on('set', boundSetPowerState);
+
+                    switchService
+                        .getCharacteristic(Characteristic.Name)
+                        .onGet(switchName);
 
                     this.services.push(switchService);
                 }
