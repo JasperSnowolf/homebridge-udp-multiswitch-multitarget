@@ -18,7 +18,7 @@ _________________________________________
 | `accessoryGroups.groupName`             | This will be the name of the Controller                 |     ✓    |
 | `accessoryGroups.accessories`           | These are the Accessories to control with the Controller|     ✓    |
 | `accessoryGroups.accessories.ipAddress` | The IP Address of the Accessory                         |     ✓    |
-| `accessoryGroups.accessories.name`      | (Optional) A name to identify the Accessory             |     ✓    |
+| `accessoryGroups.accessories.name`      | (Optional) A name to identify the Accessory             |          |
 
 ## Disclaimer
 I mostly made this plugin to solve a problem I faced with my own Homekit/Homebridge/Wiz deployment. As such, I only have access to the
