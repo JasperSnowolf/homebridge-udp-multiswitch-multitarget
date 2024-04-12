@@ -1,0 +1,85 @@
+{
+  "pluginAlias": "WizSceneController",
+  "pluginType": "platform",
+  "singular": true,
+  "schema": {
+    "type": "object",
+    "properties": {
+      "scenes": {
+        "type": "array",
+        "items": {
+          "scene": "Scene",
+          "type": "string",
+          "oneOf": [
+            { "title": "Ocean", "enum": ["1"] },
+            { "title": "Romance", "enum": ["2"] },
+            { "title": "Sunset", "enum": ["3"] },
+            { "title": "Party", "enum": ["4"] },
+            { "title": "Fireplace", "enum": ["5"] },
+            { "title": "Cozy", "enum": ["6"] },
+            { "title": "Forest", "enum": ["7"] },
+            { "title": "Pastel Colors", "enum": ["8"] },
+            { "title": "Wake up", "enum": ["9"] },
+            { "title": "Bedtime", "enum": ["10"] },
+            { "title": "Warm White", "enum": ["11"] },
+            { "title": "Daylight", "enum": ["12"] },
+            { "title": "Cool white", "enum": ["13"] },
+            { "title": "Night light", "enum": ["14"] },
+            { "title": "Focus", "enum": ["15"] },
+            { "title": "Relax", "enum": ["16"] },
+            { "title": "True colors", "enum": ["17"] },
+            { "title": "TV time", "enum": ["18"] },
+            { "title": "Plantgrowth", "enum": ["19"] },
+            { "title": "Spring", "enum": ["20"] },
+            { "title": "Summer", "enum": ["21"] },
+            { "title": "Fall", "enum": ["22"] },
+            { "title": "Deepdive", "enum": ["23"] },
+            { "title": "Jungle", "enum": ["24"] },
+            { "title": "Mojito", "enum": ["25"] },
+            { "title": "Club", "enum": ["26"] },
+            { "title": "Christmas", "enum": ["27"] },
+            { "title": "Halloween", "enum": ["28"] },
+            { "title": "Candlelight", "enum": ["29"] },
+            { "title": "Golden white", "enum": ["30"] },
+            { "title": "Pulse", "enum": ["31"] },
+            { "title": "Steampunk", "enum": ["32"] },
+            { "title": "White", "enum": ["33"] }
+          ]
+        }
+      },
+      "accessoryGroups": {
+        "type": "array",
+        "items": {
+          "title": "Accessory Group",
+          "type": "object",
+          "properties": {
+            "groupName": {
+              "title": "Group Name",
+              "type": "string",
+              "required": true
+            },
+            "accessories": {
+              "type": "array",
+              "items": {
+                "title": "Accessory",
+                "type": "object",
+                "properties": {
+                  "ipAddress": {
+                    "title": "IP Address",
+                    "type": "string",
+                    "required": true
+                  },
+                  "name": {
+                    "title": "Name",
+                    "type": "string",
+                    "required": false
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
