@@ -1,7 +1,7 @@
 {
   "displayName": "Wiz Scene Controller",
   "name": "homebridge-wiz-scene-controller",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "jaspersnowolf",
   "description": "Switches to send UDP requests to multiple targets (forked from homebridge-udp-multiswitch)",
   "license": "MIT",
