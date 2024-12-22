@@ -2,9 +2,10 @@ import dgram from 'dgram';
 import getMac from 'getmac';
 import internalIp from 'internal-ip';
 
-import { Device, LightResponse, LightSetting } from '../types';
+import { Device, LightResponse, LightRegistrationResposne, LightSetting } from '../types';
 import { WizSceneControllerPlatform } from '../platform';
 import { makeLogger } from './logger';
+import { HAPStatus } from 'homebridge';
 
 function strMac() {
   return getMac().toUpperCase().replace(/:/g, '');
@@ -14,17 +15,13 @@ function strIp() {
   return internalIp.v4.sync() ?? '0.0.0.0';
 }
 
+const BROADCAST_ADDRESS = '255.255.255.255';
 const BROADCAST_PORT = 38899;
+const LISTEN_PORT = 38901;
 const ADDRESS = strIp();
 const MAC = strMac();
 
-function getNetworkConfig() {
-  return {
-    ADDRESS: ADDRESS,
-    PORT: 38901,
-    MAC: MAC,
-  };
-}
+const deviceIpMap: Map<string, string> = new Map<string, string>();
 
 const requestQueue: { [ipAddress: string]: { [method: string]: ((lightSetting: LightSetting) => void)[] } } = {};
 
@@ -32,34 +29,46 @@ const getPilotQueue: {
   [key: string]: ((error: Error | null, pilot: any) => void)[];
 } = {};
 
-export function getLightSetting(
-  platform: WizSceneControllerPlatform, device: Device, onSuccess: (lightSetting: LightSetting) => void): void {
+function getDeviceIpAddress(device: Device): string | undefined {
+  return device.ipAddress ? device.ipAddress : deviceIpMap.get(device.macAddress);
+}
 
-  platform.log.debug('Senging UDP request to: ' + device.ipAddress);
+export function getLightSetting(
+  platform: WizSceneControllerPlatform, device: Device, onSuccess: (lightSetting?: LightSetting, hapStatus?: HAPStatus) => void): void {
+
+  const deviceIpAddress = getDeviceIpAddress(device);
+
+  if (!deviceIpAddress) {
+    platform.log.error(`No device ip address found for device: ${JSON.stringify(device)}`);
+    onSuccess(undefined, -70409);
+    return;
+  }
+
+  platform.log.debug('Senging UDP request to: ' + deviceIpAddress);
   platform.socket.send(
     '{"method":"getPilot","params":{}}',
     BROADCAST_PORT,
-    device.ipAddress,
+    deviceIpAddress,
     (error: Error | null) => {
-      if (error !== null && device.ipAddress in getPilotQueue) {
+      if (error !== null && deviceIpAddress in getPilotQueue) {
         platform.log.debug(
           `[Socket] Failed to send getPilot response to ${
-            device.ipAddress
+            deviceIpAddress
           }: ${error.toString()}`,
         );
       }
     },
   );
 
-  if (!requestQueue[device.ipAddress]) {
-    requestQueue[device.ipAddress] = {};
+  if (!requestQueue[deviceIpAddress]) {
+    requestQueue[deviceIpAddress] = {};
   }
 
-  if (!requestQueue[device.ipAddress]['getPilot']) {
-    requestQueue[device.ipAddress]['getPilot'] = [];
+  if (!requestQueue[deviceIpAddress]['getPilot']) {
+    requestQueue[deviceIpAddress]['getPilot'] = [];
   }
 
-  requestQueue[device.ipAddress]['getPilot'].push(onSuccess);
+  requestQueue[deviceIpAddress]['getPilot'].push(onSuccess);
 }
 
 export function setLightSetting(
@@ -68,16 +77,23 @@ export function setLightSetting(
   const message = '{"method":"setPilot","params":' + JSON.stringify(lightSetting) + '}';
 
   deviceList.forEach(device => {
-    platform.log.debug('Senging UDP request to: ' + device.ipAddress + ' ' + message);
+    const deviceIpAddress = getDeviceIpAddress(device);
+
+    if (!deviceIpAddress) {
+      platform.log.error(`No device ip address found for device: ${JSON.stringify(device)}`);
+      return;
+    }
+
+    platform.log.debug('Senging UDP request to: ' + deviceIpAddress + ' ' + message);
     platform.socket.send(
       message,
       BROADCAST_PORT,
-      device.ipAddress,
+      deviceIpAddress,
       (error: Error | null) => {
-        if (error !== null && device.ipAddress in getPilotQueue) {
+        if (error !== null && deviceIpAddress in getPilotQueue) {
           platform.log.debug(
             `[Socket] Failed to send getPilot response to ${
-              device.ipAddress
+              deviceIpAddress
             }: ${error.toString()}`,
           );
         }
@@ -93,6 +109,16 @@ export function setPilot(
   lightSetting: LightSetting,
   callback: (error: Error | null) => void,
 ) {
+
+  const deviceIpAddress = getDeviceIpAddress(device);
+
+  if (!deviceIpAddress) {
+    const errorMessage = `No device ip address found for device: ${JSON.stringify(device)}`;
+    platform.log.error(errorMessage);
+    callback({ name: 'no_ip_error', message: errorMessage });
+    return;
+  }
+
   if (platform.config.lastStatus) {
     // Keep only the settings that cannot change the bulb color
     Object.keys(lightSetting).forEach((key: string) => {
@@ -106,27 +132,27 @@ export function setPilot(
     env: 'pro',
     params: Object.assign(
       {
-        mac: device.ipAddress,
+        mac: deviceIpAddress,
         src: 'udp',
       },
       lightSetting,
     ),
   });
-  if (device.ipAddress in setPilotQueue) {
-    setPilotQueue[device.ipAddress].push(callback);
+  if (deviceIpAddress in setPilotQueue) {
+    setPilotQueue[deviceIpAddress].push(callback);
   } else {
-    setPilotQueue[device.ipAddress] = [callback];
+    setPilotQueue[deviceIpAddress] = [callback];
   }
-  platform.log.debug(`[SetPilot][${device.ipAddress}:${BROADCAST_PORT}] ${msg}`);
-  platform.socket.send(msg, BROADCAST_PORT, device.ipAddress, (error: Error | null) => {
-    if (error !== null && device.ipAddress in setPilotQueue) {
+  platform.log.debug(`[SetPilot][${deviceIpAddress}:${BROADCAST_PORT}] ${msg}`);
+  platform.socket.send(msg, BROADCAST_PORT, deviceIpAddress, (error: Error | null) => {
+    if (error !== null && deviceIpAddress in setPilotQueue) {
       platform.log.debug(
         `[Socket] Failed to send setPilot response to ${
-          device.ipAddress
+          deviceIpAddress
         }: ${error.toString()}`,
       );
-      const callbacks = setPilotQueue[device.ipAddress];
-      delete setPilotQueue[device.ipAddress];
+      const callbacks = setPilotQueue[deviceIpAddress];
+      delete setPilotQueue[deviceIpAddress];
       callbacks.map((f) => f(error));
     }
   });
@@ -148,17 +174,28 @@ export function createSocket(platform: WizSceneControllerPlatform) {
     );
 
     const lightResponse: LightResponse = JSON.parse(decryptedMsg);
-    const callbacksForDevice = requestQueue[rinfo.address];
-    const callbackbacksForMethod = callbacksForDevice ? callbacksForDevice[lightResponse.method] : null;
 
-    if (callbackbacksForMethod && callbackbacksForMethod.length > 0) {
-      const lightSetting: LightSetting = JSON.parse(decryptedMsg).result;
-      platform.log.debug('Received lighting setting for ' + rinfo.address + ' is: ' + JSON.stringify(lightSetting));
-      platform.log.debug('Flushing all callbacks for:', rinfo.address, lightResponse.method);
-      callbackbacksForMethod.forEach(callback => callback(lightSetting));
-      delete callbacksForDevice[lightResponse.method];
+    if (lightResponse.method === 'registration') {
+      handleRegistration(platform, lightResponse as LightRegistrationResposne, rinfo.address);
+    } else {
+      const callbacksForDevice = requestQueue[rinfo.address];
+      const callbackbacksForMethod = callbacksForDevice ? callbacksForDevice[lightResponse.method] : null;
+
+      if (callbackbacksForMethod && callbackbacksForMethod.length > 0) {
+        const lightSetting: LightSetting = JSON.parse(decryptedMsg).result;
+        platform.log.debug('Received lighting setting for ' + rinfo.address + ' is: ' + JSON.stringify(lightSetting));
+        platform.log.debug('Flushing all callbacks for:', rinfo.address, lightResponse.method);
+        callbackbacksForMethod.forEach(callback => callback(lightSetting));
+        delete callbacksForDevice[lightResponse.method];
+      }
     }
   });
+
+  function handleRegistration(platform: WizSceneControllerPlatform, lightResponse: LightRegistrationResposne, ipAddress: string): void {
+    const log = makeLogger(platform, 'Registration Handler');
+    log.debug(`Registration response received for: ${lightResponse.result.mac}`);
+    deviceIpMap.set(lightResponse.result.mac, ipAddress);
+  }
 
   platform.api.on('shutdown', () => {
     log.debug('Shutting down socket');
@@ -168,15 +205,41 @@ export function createSocket(platform: WizSceneControllerPlatform) {
   return socket;
 }
 
-export function bindSocket(platform: WizSceneControllerPlatform) {
+export function bindSocket(platform: WizSceneControllerPlatform, onReady: () => void) {
   const log = makeLogger(platform, 'Socket');
-  const { PORT, ADDRESS } = getNetworkConfig();
-  log.info(`Setting up socket on ${ADDRESS ?? '0.0.0.0'}:${PORT}`);
-  platform.socket.bind(PORT, ADDRESS, () => {
+  log.info(`Setting up socket on ${ADDRESS ?? '0.0.0.0'}:${LISTEN_PORT}`);
+  platform.socket.bind(LISTEN_PORT, ADDRESS, () => {
     const sockAddress = platform.socket.address();
     log.debug(
       `Socket Bound: UDP ${sockAddress.family} listening on ${sockAddress.address}:${sockAddress.port}`,
     );
     platform.socket.setBroadcast(true);
+    onReady();
   });
+}
+
+export function sendDiscoveryBroadcast(platform: WizSceneControllerPlatform) {
+  const log = makeLogger(platform, 'Discovery');
+  log.info(`Sending discovery UDP broadcast to ${BROADCAST_ADDRESS}:${BROADCAST_PORT}`);
+
+  // Send generic discovery message
+  platform.socket.send(
+    `{"method":"registration","params":{"phoneMac":"${MAC}","register":false,"phoneIp":"${ADDRESS}"}}`,
+    BROADCAST_PORT,
+    BROADCAST_ADDRESS,
+  );
+
+  // Send discovery message to listed devices
+  if (Array.isArray(platform.config.devices)) {
+    for (const device of platform.config.devices) {
+      if (device.host) {
+        log.info(`Sending discovery UDP broadcast to ${device.host}:${BROADCAST_PORT}`);
+        platform.socket.send(
+          `{"method":"registration","params":{"phoneMac":"${MAC}","register":false,"phoneIp":"${ADDRESS}"}}`,
+          BROADCAST_PORT,
+          device.host,
+        );
+      }
+    }
+  }
 }

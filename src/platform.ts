@@ -3,7 +3,7 @@ import { Socket } from 'dgram';
 
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
 import { WizSceneController } from './platformAccessory';
-import { bindSocket, createSocket } from './util/network';
+import { bindSocket, createSocket, sendDiscoveryBroadcast } from './util/network';
 
 /**
  * HomebridgePlatform
@@ -17,6 +17,9 @@ export class WizSceneControllerPlatform implements DynamicPlatformPlugin {
   // this is used to track restored cached accessories
   public readonly accessories: PlatformAccessory[] = [];
   public readonly socket: Socket;
+
+  // Mac Address -> IP Address Map
+  ipMap: Map<string, { ipAddress?: string }> = new Map<string, { ipAddress?: string }>();
 
   constructor(
     public readonly log: Logger,
@@ -33,10 +36,12 @@ export class WizSceneControllerPlatform implements DynamicPlatformPlugin {
     // to start discovery of new accessories.
     this.api.on('didFinishLaunching', () => {
       log.debug('Executed didFinishLaunching callback');
-      bindSocket(this);
+      bindSocket(this, () => {
+        sendDiscoveryBroadcast(this);
 
-      // run the method to discover / register your devices as accessories
-      this.discoverDevices();
+        // run the method to discover / register your devices as accessories
+        this.discoverDevices();
+      });
     });
   }
 
@@ -79,12 +84,33 @@ export class WizSceneControllerPlatform implements DynamicPlatformPlugin {
         // the `context` property can be used to store any data about the accessory you may need
         accessory.context.device = accessoryGroup;
 
+        // create mac address entry in map, set ip address value to placeholder from map
+        accessory.context.device.accessories.forEach(accessory => {
+          this.ipMap.set(accessory.macAddress, {});
+          accessory.mappedIpAddress = this.ipMap.get(accessory.macAddress);
+          this.log.debug('Current ip map:');
+          for (const [key, value] of this.ipMap) {
+            this.log.debug(key, JSON.stringify(value));
+          }
+        });
+
         // create the accessory handler for the newly create accessory
         // this is imported from `platformAccessory.ts`
         new WizSceneController(this, accessory);
 
         // link the accessory to your platform
         this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
+      }
+    }
+  }
+
+  populateDeviceIpMap(macAddress: string, ipAddress: string) {
+    if (this.ipMap.has(macAddress)) {
+      this.log.debug(`Registering MAC/IP address pair: ${macAddress}/${ipAddress}`);
+      this.ipMap.set(macAddress, { ipAddress });
+      this.log.debug('Current ip map:');
+      for (const [key, value] of this.ipMap) {
+        this.log.debug(key, JSON.stringify(value));
       }
     }
   }

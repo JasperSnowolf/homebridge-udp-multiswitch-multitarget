@@ -11,7 +11,9 @@ export interface Config extends PlatformConfig {
   refreshInterval?: number;
 }
 export interface Device {
-  ipAddress: string;
+  macAddress: string;
+  ipAddress?: string;
+  mappedIpAddress?: { ipAddress: string };
   lastSelectedSceneId?: number;
 }
 
@@ -29,4 +31,12 @@ export interface LightSetting {
 export interface LightResponse {
   method: string;
   env: string;
+}
+
+export interface LightRegistrationResposne extends LightResponse {
+  result: LightResult;
+}
+
+export interface LightResult {
+  mac: string;
 }

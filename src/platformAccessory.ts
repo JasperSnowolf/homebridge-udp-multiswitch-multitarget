@@ -1,8 +1,9 @@
-import { Service, PlatformAccessory, CharacteristicValue, CharacteristicGetCallback } from 'homebridge';
+import { Service, PlatformAccessory, CharacteristicValue, CharacteristicGetCallback, HAPStatus } from 'homebridge';
 
 import { WizSceneControllerPlatform } from './platform';
 import { getLightSetting, setLightSetting } from './util/network';
 import { SCENES } from './scenes';
+import { LightSetting } from './types';
 
 /**
  * Platform Accessory
@@ -39,9 +40,10 @@ export class WizSceneController {
 
     // Is on/off
     this.tvService.getCharacteristic(this.platform.Characteristic.Active)
-      .on('get', callback => getLightSetting(this.platform, this.accessory.context.device.accessories[0], lightSetting =>
-        callback(0, Number(lightSetting?.state)),
-      ))
+      .on('get', callback => getLightSetting(
+        this.platform,
+        this.accessory.context.device.accessories[0],
+        (lightSetting?: LightSetting, hapStatus?: HAPStatus) => callback(hapStatus ? hapStatus : 0, Number(lightSetting?.state))))
       .onSet(this.setOn.bind(this));
 
     // What is the current Scene?
@@ -49,7 +51,7 @@ export class WizSceneController {
       .on('get', callback => getLightSetting(
         this.platform,
         this.accessory.context.device.accessories[0],
-        lightSetting => callback(0, lightSetting.sceneId)))
+        (lightSetting?: LightSetting, hapStatus?: HAPStatus) => callback(hapStatus ? hapStatus : 0, lightSetting?.sceneId)))
       .onSet(sceneId => setLightSetting(this.platform, this.accessory.context.device.accessories, SCENES[Number(sceneId)].lightSetting));
 
     // Brightness
@@ -57,7 +59,7 @@ export class WizSceneController {
       .on('get', callback => getLightSetting(
         this.platform,
         this.accessory.context.device.accessories[0],
-        lightSetting => callback(0, lightSetting.dimming)))
+        (lightSetting?: LightSetting, hapStatus?: HAPStatus) => callback(hapStatus ? hapStatus : 0, lightSetting?.dimming)))
       .onSet(brightness => setLightSetting(this.platform, this.accessory.context.device.accessories, { dimming: Number(brightness) }));
 
     // Initialize Scenes
@@ -106,10 +108,10 @@ export class WizSceneController {
   }
 
   getOn(callback: CharacteristicGetCallback) {
-    getLightSetting(this.platform, this.accessory.context.device.accessories[0], lightSetting => {
-      this.platform.log.debug('Set Characteristic On ->', lightSetting?.state);
-      callback(0, Number(lightSetting?.state));
-    });
+    getLightSetting(
+      this.platform,
+      this.accessory.context.device.accessories[0],
+      (lightSetting?: LightSetting, hapStatus?: HAPStatus) => callback(hapStatus ? hapStatus : 0, Number(lightSetting?.state)));
   }
 
   /**
