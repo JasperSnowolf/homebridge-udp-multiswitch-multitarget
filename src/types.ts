@@ -11,6 +11,7 @@ export interface Config extends PlatformConfig {
   refreshInterval?: number;
 }
 export interface Device {
+  name: string;
   macAddress: string;
   ipAddress?: string;
   mappedIpAddress?: { ipAddress: string };

@@ -23,10 +23,13 @@ const MAC = strMac();
 
 const deviceIpMap: Map<string, string> = new Map<string, string>();
 
-const requestQueue: { [ipAddress: string]: { [method: string]: ((lightSetting: LightSetting) => void)[] } } = {};
-
-const getPilotQueue: {
-  [key: string]: ((error: Error | null, pilot: any) => void)[];
+const requestQueue: {
+  [ipAddress: string]: {
+    [method: string]: {
+      timeout: NodeJS.Timeout;
+      callbacks: ((lightSetting?: LightSetting, hapStatus?: HAPStatus) => void)[];
+    };
+  };
 } = {};
 
 function getDeviceIpAddress(device: Device): string | undefined {
@@ -50,7 +53,7 @@ export function getLightSetting(
     BROADCAST_PORT,
     deviceIpAddress,
     (error: Error | null) => {
-      if (error !== null && deviceIpAddress in getPilotQueue) {
+      if (error !== null && deviceIpAddress in requestQueue) {
         platform.log.debug(
           `[Socket] Failed to send getPilot response to ${
             deviceIpAddress
@@ -64,11 +67,22 @@ export function getLightSetting(
     requestQueue[deviceIpAddress] = {};
   }
 
+  const timeout = setTimeout(() => {
+    platform.log.warn(`Request timeout to device name/mac/ip: ${device.name}/${device.macAddress}/${deviceIpAddress}`);
+    const callbacks = requestQueue[deviceIpAddress]['getPilot']?.callbacks;
+    if (callbacks) {
+      callbacks.forEach(callback => callback(undefined, -70409));
+    }
+  }, 500);
+
   if (!requestQueue[deviceIpAddress]['getPilot']) {
-    requestQueue[deviceIpAddress]['getPilot'] = [];
+    requestQueue[deviceIpAddress]['getPilot'] = { timeout, callbacks: []};
+  } else {
+    clearTimeout(requestQueue[deviceIpAddress]['getPilot'].timeout);
+    requestQueue[deviceIpAddress]['getPilot'].timeout = timeout;
   }
 
-  requestQueue[deviceIpAddress]['getPilot'].push(onSuccess);
+  requestQueue[deviceIpAddress]['getPilot'].callbacks.push(onSuccess);
 }
 
 export function setLightSetting(
@@ -90,7 +104,7 @@ export function setLightSetting(
       BROADCAST_PORT,
       deviceIpAddress,
       (error: Error | null) => {
-        if (error !== null && deviceIpAddress in getPilotQueue) {
+        if (error !== null && deviceIpAddress in requestQueue) {
           platform.log.debug(
             `[Socket] Failed to send getPilot response to ${
               deviceIpAddress
@@ -178,15 +192,16 @@ export function createSocket(platform: WizSceneControllerPlatform) {
     if (lightResponse.method === 'registration') {
       handleRegistration(platform, lightResponse as LightRegistrationResposne, rinfo.address);
     } else {
-      const callbacksForDevice = requestQueue[rinfo.address];
-      const callbackbacksForMethod = callbacksForDevice ? callbacksForDevice[lightResponse.method] : null;
+      const methodsForDevice = requestQueue[rinfo.address];
+      const callbackbacksForMethod = methodsForDevice ? methodsForDevice[lightResponse.method]?.callbacks : null;
+      clearTimeout(methodsForDevice?.[lightResponse.method]?.timeout);
 
       if (callbackbacksForMethod && callbackbacksForMethod.length > 0) {
         const lightSetting: LightSetting = JSON.parse(decryptedMsg).result;
         platform.log.debug('Received lighting setting for ' + rinfo.address + ' is: ' + JSON.stringify(lightSetting));
         platform.log.debug('Flushing all callbacks for:', rinfo.address, lightResponse.method);
         callbackbacksForMethod.forEach(callback => callback(lightSetting));
-        delete callbacksForDevice[lightResponse.method];
+        delete methodsForDevice[lightResponse.method];
       }
     }
   });
