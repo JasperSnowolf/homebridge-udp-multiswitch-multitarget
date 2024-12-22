@@ -191,7 +191,7 @@ export function createSocket(platform: WizSceneControllerPlatform) {
 
     if (lightResponse.method === 'registration') {
       handleRegistration(platform, lightResponse as LightRegistrationResposne, rinfo.address);
-    } else {
+    } else if (lightResponse.method === 'getPilot') {
       const methodsForDevice = requestQueue[rinfo.address];
       const callbackbacksForMethod = methodsForDevice ? methodsForDevice[lightResponse.method]?.callbacks : null;
       clearTimeout(methodsForDevice?.[lightResponse.method]?.timeout);
