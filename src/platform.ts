@@ -3,7 +3,7 @@ import { Socket } from 'dgram';
 
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
 import { WizSceneController } from './platformAccessory';
-import { bindSocket, createSocket, sendDiscoveryBroadcast } from './util/network';
+import { bindSocket, createSocket, registerPeriodicDiscovery, sendDiscoveryBroadcast } from './util/network';
 
 /**
  * HomebridgePlatform
@@ -35,6 +35,7 @@ export class WizSceneControllerPlatform implements DynamicPlatformPlugin {
       log.debug('Executed didFinishLaunching callback');
       bindSocket(this, () => {
         sendDiscoveryBroadcast(this);
+        registerPeriodicDiscovery(this);
 
         // run the method to discover / register your devices as accessories
         this.discoverDevices();

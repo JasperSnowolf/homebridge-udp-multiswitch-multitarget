@@ -207,8 +207,14 @@ export function createSocket(platform: WizSceneControllerPlatform) {
 
   function handleRegistration(platform: WizSceneControllerPlatform, lightResponse: LightRegistrationResposne, ipAddress: string): void {
     const log = makeLogger(platform, 'Registration Handler');
-    log.debug(`Registration response received for: ${lightResponse.result.mac}`);
-    deviceIpMap.set(lightResponse.result.mac, ipAddress);
+    const macAddress = lightResponse.result.mac;
+
+    log.debug(`Registration response received for: ${macAddress}`);
+    if (nonReachableDevices.includes(macAddress)) {
+      log.info(`Reconnected with device: ${macAddress}`);
+    }
+
+    deviceIpMap.set(macAddress, ipAddress);
   }
 
   platform.api.on('shutdown', () => {
@@ -235,9 +241,20 @@ export function bindSocket(platform: WizSceneControllerPlatform, onReady: () => 
 export function sendDiscoveryBroadcast(platform: WizSceneControllerPlatform) {
   const log = makeLogger(platform, 'Discovery');
   log.info(`Sending discovery UDP broadcast to ${BROADCAST_ADDRESS}:${BROADCAST_PORT}`);
-  platform.socket.send(
-    `{"method":"registration","params":{"phoneMac":"${MAC}","register":false,"phoneIp":"${ADDRESS}"}}`,
-    BROADCAST_PORT,
-    BROADCAST_ADDRESS,
-  );
+
+  for (let i = 0; i < 3; i++) {
+    platform.socket.send(
+      `{"method":"registration","params":{"phoneMac":"${MAC}","register":false,"phoneIp":"${ADDRESS}"}}`,
+      BROADCAST_PORT,
+      BROADCAST_ADDRESS,
+    );
+  }
+}
+
+export function registerPeriodicDiscovery(platform: WizSceneControllerPlatform) {
+  const log = makeLogger(platform, 'Periodic Discovery');
+  setTimeout(() => {
+    log.info('Starting Periodic Discovery');
+    sendDiscoveryBroadcast(platform);
+  }, 3600 * 1000);
 }
