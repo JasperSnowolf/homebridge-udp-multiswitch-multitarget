@@ -35,7 +35,7 @@ const requestQueue: {
 
 const accessoryRequestMap: Map<string, string[]> = new Map<string, string[]>();
 
-const nonReachableDevices: Device[] = [];
+const nonReachableDevices: string[] = [];
 
 function getDeviceIpAddress(device: Device): string | undefined {
   return device.ipAddress ? device.ipAddress : deviceIpMap.get(device.macAddress);
@@ -63,8 +63,9 @@ export function getLightSetting(
   const deviceIpAddress = getDeviceIpAddress(device);
 
   if (!deviceIpAddress) {
-    if (!nonReachableDevices.includes(device)) {
+    if (!nonReachableDevices.includes(device.macAddress)) {
       platform.log.error(`No device ip address found for device: ${JSON.stringify(device)}`);
+      nonReachableDevices.push(device.macAddress);
     }
     return false;
   }
@@ -128,8 +129,9 @@ export function setLightSetting(
     const deviceIpAddress = getDeviceIpAddress(device);
 
     if (!deviceIpAddress) {
-      if (!nonReachableDevices.includes(device)) {
+      if (!nonReachableDevices.includes(device.macAddress)) {
         platform.log.error(`No device ip address found for device: ${JSON.stringify(device)}`);
+        nonReachableDevices.push(device.macAddress);
       }
       return;
     }
