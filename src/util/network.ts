@@ -235,25 +235,9 @@ export function bindSocket(platform: WizSceneControllerPlatform, onReady: () => 
 export function sendDiscoveryBroadcast(platform: WizSceneControllerPlatform) {
   const log = makeLogger(platform, 'Discovery');
   log.info(`Sending discovery UDP broadcast to ${BROADCAST_ADDRESS}:${BROADCAST_PORT}`);
-
-  // Send generic discovery message
   platform.socket.send(
     `{"method":"registration","params":{"phoneMac":"${MAC}","register":false,"phoneIp":"${ADDRESS}"}}`,
     BROADCAST_PORT,
     BROADCAST_ADDRESS,
   );
-
-  // Send discovery message to listed devices
-  if (Array.isArray(platform.config.devices)) {
-    for (const device of platform.config.devices) {
-      if (device.host) {
-        log.info(`Sending discovery UDP broadcast to ${device.host}:${BROADCAST_PORT}`);
-        platform.socket.send(
-          `{"method":"registration","params":{"phoneMac":"${MAC}","register":false,"phoneIp":"${ADDRESS}"}}`,
-          BROADCAST_PORT,
-          device.host,
-        );
-      }
-    }
-  }
 }
