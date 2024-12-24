@@ -1,5 +1,3 @@
-import { PlatformConfig } from 'homebridge';
-
 export interface AccessoryGroup {
   groupName: string;
   accessories: Device[];
