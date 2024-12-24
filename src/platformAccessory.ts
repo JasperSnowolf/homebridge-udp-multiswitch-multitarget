@@ -1,7 +1,8 @@
-import { Service, PlatformAccessory, CharacteristicValue, CharacteristicGetCallback, HAPStatus } from 'homebridge';
+/* eslint-disable max-len */
+import { Service, PlatformAccessory, CharacteristicValue, HAPStatus } from 'homebridge';
 
 import { WizSceneControllerPlatform } from './platform';
-import { getLightSetting, setLightSetting } from './util/network';
+import { getAccessoryGroupSetting, setLightSetting } from './util/network';
 import { SCENES } from './scenes';
 import { LightSetting } from './types';
 
@@ -36,31 +37,37 @@ export class WizSceneController {
     this.tvService = this.accessory.getService(this.platform.Service.Television)
       || this.accessory.addService(this.platform.Service.Television);
 
-    this.tvService.setCharacteristic(this.platform.Characteristic.ConfiguredName, accessory.context.device.groupName);
+    this.tvService.setCharacteristic(this.platform.Characteristic.ConfiguredName, accessory.context.accessoryGroup.groupName);
 
     // Is on/off
     this.tvService.getCharacteristic(this.platform.Characteristic.Active)
-      .on('get', callback => getLightSetting(
+      .on('get', callback => getAccessoryGroupSetting(
         this.platform,
-        this.accessory.context.device.accessories[0],
+        this.accessory.context.accessoryGroup,
         (lightSetting?: LightSetting, hapStatus?: HAPStatus) => callback(hapStatus ? hapStatus : 0, Number(lightSetting?.state))))
       .onSet(this.setOn.bind(this));
 
     // What is the current Scene?
     this.tvService.getCharacteristic(this.platform.Characteristic.ActiveIdentifier)
-      .on('get', callback => getLightSetting(
+      .on('get', callback => getAccessoryGroupSetting(
         this.platform,
-        this.accessory.context.device.accessories[0],
+        this.accessory.context.accessoryGroup,
         (lightSetting?: LightSetting, hapStatus?: HAPStatus) => callback(hapStatus ? hapStatus : 0, lightSetting?.sceneId)))
-      .onSet(sceneId => setLightSetting(this.platform, this.accessory.context.device.accessories, SCENES[Number(sceneId)].lightSetting));
+      .onSet(sceneId => setLightSetting(
+        this.platform,
+        this.accessory.context.accessoryGroup.accessories,
+        SCENES[Number(sceneId)].lightSetting));
 
     // Brightness
     this.tvService.getCharacteristic(this.platform.Characteristic.Brightness)
-      .on('get', callback => getLightSetting(
+      .on('get', callback => getAccessoryGroupSetting(
         this.platform,
-        this.accessory.context.device.accessories[0],
+        this.accessory.context.accessoryGroup,
         (lightSetting?: LightSetting, hapStatus?: HAPStatus) => callback(hapStatus ? hapStatus : 0, lightSetting?.dimming)))
-      .onSet(brightness => setLightSetting(this.platform, this.accessory.context.device.accessories, { dimming: Number(brightness) }));
+      .onSet(brightness => setLightSetting(
+        this.platform,
+        this.accessory.context.accessoryGroup.accessories,
+        { dimming: Number(brightness) }));
 
     // Initialize Scenes
     const configuredScenes: string[] = this.platform.config.scenes;
@@ -107,32 +114,14 @@ export class WizSceneController {
     });
   }
 
-  getOn(callback: CharacteristicGetCallback) {
-    getLightSetting(
-      this.platform,
-      this.accessory.context.device.accessories[0],
-      (lightSetting?: LightSetting, hapStatus?: HAPStatus) => callback(hapStatus ? hapStatus : 0, Number(lightSetting?.state)));
-  }
-
   /**
    * Handle "SET" requests from HomeKit
    * These are sent when the user changes the state of an accessory, for example, turning on a Light bulb.
    */
   async setOn(value: CharacteristicValue) {
-    setLightSetting(this.platform, this.accessory.context.device.accessories, {state: Boolean(value)});
+    setLightSetting(this.platform, this.accessory.context.accessoryGroup.accessories, {state: Boolean(value)});
 
     this.platform.log.debug('Set Characteristic On ->', value);
-  }
-
-  /**
-   * Handle "SET" requests from HomeKit
-   * These are sent when the user changes the state of an accessory, for example, changing the Brightness
-   */
-  async setBrightness(value: CharacteristicValue) {
-    // implement your own code to set the brightness
-    this.exampleStates.Brightness = value as number;
-
-    this.platform.log.debug('Set Characteristic Brightness -> ', value);
   }
 
 }

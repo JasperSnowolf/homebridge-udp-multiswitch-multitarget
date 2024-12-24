@@ -2,7 +2,7 @@ import dgram from 'dgram';
 import getMac from 'getmac';
 import internalIp from 'internal-ip';
 
-import { Device, LightResponse, LightRegistrationResposne, LightSetting } from '../types';
+import { Device, LightResponse, LightRegistrationResposne, LightSetting, AccessoryGroup } from '../types';
 import { WizSceneControllerPlatform } from '../platform';
 import { makeLogger } from './logger';
 import { HAPStatus } from 'homebridge';
@@ -26,25 +26,43 @@ const deviceIpMap: Map<string, string> = new Map<string, string>();
 const requestQueue: {
   [ipAddress: string]: {
     [method: string]: {
+      accessoryGroupName: string;
       timeout: NodeJS.Timeout;
       callbacks: ((lightSetting?: LightSetting, hapStatus?: HAPStatus) => void)[];
     };
   };
 } = {};
 
+const accessoryRequestMap: Map<string, string[]> = new Map<string, string[]>();
+
 function getDeviceIpAddress(device: Device): string | undefined {
   return device.ipAddress ? device.ipAddress : deviceIpMap.get(device.macAddress);
 }
 
-export function getLightSetting(
-  platform: WizSceneControllerPlatform, device: Device, onSuccess: (lightSetting?: LightSetting, hapStatus?: HAPStatus) => void): void {
+export function getAccessoryGroupSetting(
+  platform: WizSceneControllerPlatform,
+  accessoryGroup: AccessoryGroup,
+  callback: (lightSetting?: LightSetting, hapStatus?: HAPStatus) => void):
+  void {
+  const requestsSent: boolean[] = accessoryGroup.accessories
+    .map(accessory => getLightSetting(accessoryGroup.groupName, platform, accessory, callback));
 
+  if (!requestsSent.includes(true)) {
+    callback(undefined, -70409);
+  }
+}
+
+export function getLightSetting(
+  accessoryGroupName: string,
+  platform: WizSceneControllerPlatform,
+  device: Device,
+  callback: (lightSetting?: LightSetting, hapStatus?: HAPStatus) => void):
+  boolean {
   const deviceIpAddress = getDeviceIpAddress(device);
 
   if (!deviceIpAddress) {
     platform.log.error(`No device ip address found for device: ${JSON.stringify(device)}`);
-    onSuccess(undefined, -70409);
-    return;
+    return false;
   }
 
   platform.log.debug('Senging UDP request to: ' + deviceIpAddress);
@@ -68,21 +86,33 @@ export function getLightSetting(
   }
 
   const timeout = setTimeout(() => {
-    platform.log.warn(`Request timeout to device name/mac/ip: ${device.name}/${device.macAddress}/${deviceIpAddress}`);
+    platform.log.warn(
+      // eslint-disable-next-line max-len
+      `Request timeout to Accessory Group name/device name/mac/ip: ${accessoryGroupName}/${device.name}/${device.macAddress}/${deviceIpAddress}`,
+    );
     const callbacks = requestQueue[deviceIpAddress]['getPilot']?.callbacks;
     if (callbacks) {
       callbacks.forEach(callback => callback(undefined, -70409));
     }
-  }, 500);
+  }, 2000);
 
   if (!requestQueue[deviceIpAddress]['getPilot']) {
-    requestQueue[deviceIpAddress]['getPilot'] = { timeout, callbacks: []};
+    requestQueue[deviceIpAddress]['getPilot'] = { accessoryGroupName, timeout, callbacks: []};
   } else {
     clearTimeout(requestQueue[deviceIpAddress]['getPilot'].timeout);
     requestQueue[deviceIpAddress]['getPilot'].timeout = timeout;
   }
 
-  requestQueue[deviceIpAddress]['getPilot'].callbacks.push(onSuccess);
+  requestQueue[deviceIpAddress]['getPilot'].callbacks.push(callback);
+
+  if (accessoryRequestMap.has(accessoryGroupName)) {
+    if (!accessoryRequestMap.get(accessoryGroupName)?.includes(deviceIpAddress)) {
+      accessoryRequestMap.get(accessoryGroupName)?.push(deviceIpAddress);
+    }
+  } else {
+    accessoryRequestMap.set(accessoryGroupName, [deviceIpAddress]);
+  }
+  return true;
 }
 
 export function setLightSetting(
@@ -116,62 +146,6 @@ export function setLightSetting(
   });
 }
 
-const setPilotQueue: { [key: string]: ((error: Error | null) => void)[] } = {};
-export function setPilot(
-  platform: WizSceneControllerPlatform,
-  device: Device,
-  lightSetting: LightSetting,
-  callback: (error: Error | null) => void,
-) {
-
-  const deviceIpAddress = getDeviceIpAddress(device);
-
-  if (!deviceIpAddress) {
-    const errorMessage = `No device ip address found for device: ${JSON.stringify(device)}`;
-    platform.log.error(errorMessage);
-    callback({ name: 'no_ip_error', message: errorMessage });
-    return;
-  }
-
-  if (platform.config.lastStatus) {
-    // Keep only the settings that cannot change the bulb color
-    Object.keys(lightSetting).forEach((key: string) => {
-      if (['sceneId', 'speed', 'temp', 'dimming', 'r', 'g', 'b'].includes(key)) {
-        delete lightSetting[key as keyof typeof lightSetting];
-      }
-    });
-  }
-  const msg = JSON.stringify({
-    method: 'setPilot',
-    env: 'pro',
-    params: Object.assign(
-      {
-        mac: deviceIpAddress,
-        src: 'udp',
-      },
-      lightSetting,
-    ),
-  });
-  if (deviceIpAddress in setPilotQueue) {
-    setPilotQueue[deviceIpAddress].push(callback);
-  } else {
-    setPilotQueue[deviceIpAddress] = [callback];
-  }
-  platform.log.debug(`[SetPilot][${deviceIpAddress}:${BROADCAST_PORT}] ${msg}`);
-  platform.socket.send(msg, BROADCAST_PORT, deviceIpAddress, (error: Error | null) => {
-    if (error !== null && deviceIpAddress in setPilotQueue) {
-      platform.log.debug(
-        `[Socket] Failed to send setPilot response to ${
-          deviceIpAddress
-        }: ${error.toString()}`,
-      );
-      const callbacks = setPilotQueue[deviceIpAddress];
-      delete setPilotQueue[deviceIpAddress];
-      callbacks.map((f) => f(error));
-    }
-  });
-}
-
 export function createSocket(platform: WizSceneControllerPlatform) {
   const log = makeLogger(platform, 'Socket');
 
@@ -193,16 +167,33 @@ export function createSocket(platform: WizSceneControllerPlatform) {
       handleRegistration(platform, lightResponse as LightRegistrationResposne, rinfo.address);
     } else if (lightResponse.method === 'getPilot') {
       const methodsForDevice = requestQueue[rinfo.address];
-      const callbackbacksForMethod = methodsForDevice ? methodsForDevice[lightResponse.method]?.callbacks : null;
-      clearTimeout(methodsForDevice?.[lightResponse.method]?.timeout);
 
-      if (callbackbacksForMethod && callbackbacksForMethod.length > 0) {
-        const lightSetting: LightSetting = JSON.parse(decryptedMsg).result;
-        platform.log.debug('Received lighting setting for ' + rinfo.address + ' is: ' + JSON.stringify(lightSetting));
-        platform.log.debug('Flushing all callbacks for:', rinfo.address, lightResponse.method);
-        callbackbacksForMethod.forEach(callback => callback(lightSetting));
-        delete methodsForDevice[lightResponse.method];
+      if (!methodsForDevice) {
+        return;
       }
+
+      const methodContext = methodsForDevice[lightResponse.method];
+
+      if (!methodContext) {
+        return;
+      }
+
+      clearTimeout(methodContext.timeout);
+
+      const accessoryGroupName = methodContext.accessoryGroupName;
+      const lightSetting: LightSetting = JSON.parse(decryptedMsg).result;
+      platform.log.debug(`Received lighting setting for: ${accessoryGroupName} ${rinfo.address} is: ${JSON.stringify(lightSetting)}`);
+      platform.log.debug(`Calling all callbacks for: ${accessoryGroupName} ${rinfo.address} ${lightResponse.method}`);
+      methodContext.callbacks.forEach(callback => callback(lightSetting));
+
+      platform.log.debug(`Deleting all pending callbacks for Accessory Group: ${accessoryGroupName}`);
+      accessoryRequestMap.get(accessoryGroupName)?.forEach(ipAddress => {
+        platform.log.debug(`Deleting method context for: ${ipAddress} ${lightResponse.method}`);
+        clearTimeout(requestQueue[ipAddress][lightResponse.method].timeout);
+        delete requestQueue[ipAddress][lightResponse.method];
+      });
+
+      delete methodsForDevice[lightResponse.method];
     }
   });
 

@@ -1,15 +1,10 @@
 import { PlatformConfig } from 'homebridge';
 
-export interface Config extends PlatformConfig {
-  port?: number;
-  enableScenes?: boolean;
-  lastStatus?: boolean;
-  broadcast?: string;
-  address?: string;
-  devices?: { host?: string; mac?: string; name?: string }[];
-  ignoredDevices?: { host?: string; mac?: string }[];
-  refreshInterval?: number;
+export interface AccessoryGroup {
+  groupName: string;
+  accessories: Device[];
 }
+
 export interface Device {
   name: string;
   macAddress: string;

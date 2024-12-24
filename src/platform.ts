@@ -79,7 +79,7 @@ export class WizSceneControllerPlatform implements DynamicPlatformPlugin {
 
         // store a copy of the device object in the `accessory.context`
         // the `context` property can be used to store any data about the accessory you may need
-        accessory.context.device = accessoryGroup;
+        accessory.context.accessoryGroup = accessoryGroup;
 
         // create the accessory handler for the newly create accessory
         // this is imported from `platformAccessory.ts`
