@@ -60,25 +60,26 @@ export function getLightSetting(
   device: Device,
   callback: (lightSetting?: LightSetting, hapStatus?: HAPStatus) => void):
   boolean {
+  const log = makeLogger(platform, 'Get Light Setting');
   const deviceIpAddress = getDeviceIpAddress(device);
 
   if (!deviceIpAddress) {
     if (!nonReachableDevices.includes(device.macAddress)) {
-      platform.log.error(`No device ip address found for device: ${JSON.stringify(device)}`);
+      log.error(`No device ip address found for device: ${JSON.stringify(device)}`);
       nonReachableDevices.push(device.macAddress);
     }
     return false;
   }
 
-  platform.log.debug('Senging UDP request to: ' + deviceIpAddress);
+  log.debug('Senging UDP request to: ' + deviceIpAddress);
   platform.socket.send(
     '{"method":"getPilot","params":{}}',
     BROADCAST_PORT,
     deviceIpAddress,
     (error: Error | null) => {
       if (error !== null && deviceIpAddress in requestQueue) {
-        platform.log.debug(
-          `[Socket] Failed to send getPilot response to ${
+        log.debug(
+          `Failed to send getPilot response to ${
             deviceIpAddress
           }: ${error.toString()}`,
         );
@@ -91,7 +92,7 @@ export function getLightSetting(
   }
 
   const timeout = setTimeout(() => {
-    platform.log.warn(
+    log.warn(
       // eslint-disable-next-line max-len
       `Request timeout to Accessory Group name/device name/mac/ip: ${accessoryGroupName}/${device.name}/${device.macAddress}/${deviceIpAddress}`,
     );
@@ -122,6 +123,7 @@ export function getLightSetting(
 
 export function setLightSetting(
   platform: WizSceneControllerPlatform, deviceList: Device[], lightSetting: LightSetting): void {
+  const log = makeLogger(platform, 'Set Light Setting');
 
   const message = '{"method":"setPilot","params":' + JSON.stringify(lightSetting) + '}';
 
@@ -130,21 +132,21 @@ export function setLightSetting(
 
     if (!deviceIpAddress) {
       if (!nonReachableDevices.includes(device.macAddress)) {
-        platform.log.error(`No device ip address found for device: ${JSON.stringify(device)}`);
+        log.error(`No device ip address found for device: ${JSON.stringify(device)}`);
         nonReachableDevices.push(device.macAddress);
       }
       return;
     }
 
-    platform.log.debug('Senging UDP request to: ' + deviceIpAddress + ' ' + message);
+    log.debug('Senging UDP request to: ' + deviceIpAddress + ' ' + message);
     platform.socket.send(
       message,
       BROADCAST_PORT,
       deviceIpAddress,
       (error: Error | null) => {
         if (error !== null && deviceIpAddress in requestQueue) {
-          platform.log.debug(
-            `[Socket] Failed to send getPilot response to ${
+          log.debug(
+            `Failed to send getPilot response to ${
               deviceIpAddress
             }: ${error.toString()}`,
           );
@@ -212,6 +214,11 @@ export function createSocket(platform: WizSceneControllerPlatform) {
     log.debug(`Registration response received for: ${macAddress}`);
     if (nonReachableDevices.includes(macAddress)) {
       log.info(`Reconnected with device: ${macAddress}`);
+      nonReachableDevices.splice(nonReachableDevices.indexOf(macAddress), 1);
+    }
+
+    if (deviceIpMap.has(macAddress) && deviceIpMap.get(macAddress) !== ipAddress) {
+      log.info(`Updating IP Address for device ${macAddress}: ${deviceIpMap.get(macAddress)} -> ${ipAddress}`);
     }
 
     deviceIpMap.set(macAddress, ipAddress);
@@ -256,5 +263,6 @@ export function registerPeriodicDiscovery(platform: WizSceneControllerPlatform) 
   setTimeout(() => {
     log.info('Starting Periodic Discovery');
     sendDiscoveryBroadcast(platform);
+    registerPeriodicDiscovery(platform);
   }, 3600 * 1000);
 }
