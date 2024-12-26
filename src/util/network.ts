@@ -97,6 +97,7 @@ export function getLightSetting(
       `Request timeout to Accessory Group name/device name/mac/ip: ${accessoryGroupName}/${device.name}/${device.macAddress}/${deviceIpAddress}`,
     );
     const callbacks = requestQueue[deviceIpAddress]['getPilot']?.callbacks;
+    clearAccessoryGroupCallbacksForMethod(platform, accessoryGroupName, 'getPilot');
     if (callbacks) {
       callbacks.forEach(callback => callback(undefined, -70409));
     }
@@ -196,33 +197,9 @@ export function createSocket(platform: WizSceneControllerPlatform) {
       platform.log.debug(`Calling all callbacks for: ${accessoryGroupName} ${rinfo.address} ${lightResponse.method}`);
       methodContext.callbacks.forEach(callback => callback(lightSetting));
 
-      platform.log.debug(`Deleting all pending callbacks for Accessory Group: ${accessoryGroupName}`);
-      accessoryRequestMap.get(accessoryGroupName)?.forEach(ipAddress => {
-        platform.log.debug(`Deleting method context for: ${ipAddress} ${lightResponse.method}`);
-        clearTimeout(requestQueue[ipAddress][lightResponse.method].timeout);
-        delete requestQueue[ipAddress][lightResponse.method];
-      });
-
-      delete methodsForDevice[lightResponse.method];
+      clearAccessoryGroupCallbacksForMethod(platform, accessoryGroupName, lightResponse.method);
     }
   });
-
-  function handleRegistration(platform: WizSceneControllerPlatform, lightResponse: LightRegistrationResposne, ipAddress: string): void {
-    const log = makeLogger(platform, 'Registration Handler');
-    const macAddress = lightResponse.result.mac;
-
-    log.debug(`Registration response received for: ${macAddress}`);
-    if (nonReachableDevices.includes(macAddress)) {
-      log.info(`Reconnected with device: ${macAddress}`);
-      nonReachableDevices.splice(nonReachableDevices.indexOf(macAddress), 1);
-    }
-
-    if (deviceIpMap.has(macAddress) && deviceIpMap.get(macAddress) !== ipAddress) {
-      log.info(`Updating IP Address for device ${macAddress}: ${deviceIpMap.get(macAddress)} -> ${ipAddress}`);
-    }
-
-    deviceIpMap.set(macAddress, ipAddress);
-  }
 
   platform.api.on('shutdown', () => {
     log.debug('Shutting down socket');
@@ -230,6 +207,32 @@ export function createSocket(platform: WizSceneControllerPlatform) {
   });
 
   return socket;
+}
+
+function handleRegistration(platform: WizSceneControllerPlatform, lightResponse: LightRegistrationResposne, ipAddress: string): void {
+  const log = makeLogger(platform, 'Registration Handler');
+  const macAddress = lightResponse.result.mac;
+
+  log.debug(`Registration response received for: ${macAddress}`);
+  if (nonReachableDevices.includes(macAddress)) {
+    log.info(`Reconnected with device: ${macAddress}`);
+    nonReachableDevices.splice(nonReachableDevices.indexOf(macAddress), 1);
+  }
+
+  if (deviceIpMap.has(macAddress) && deviceIpMap.get(macAddress) !== ipAddress) {
+    log.info(`Updating IP Address for device ${macAddress}: ${deviceIpMap.get(macAddress)} -> ${ipAddress}`);
+  }
+
+  deviceIpMap.set(macAddress, ipAddress);
+}
+
+function clearAccessoryGroupCallbacksForMethod(platform: WizSceneControllerPlatform, accessoryGroupName: string, method: string) {
+  platform.log.debug(`Deleting all pending callbacks for Accessory Group: ${accessoryGroupName}`);
+  accessoryRequestMap.get(accessoryGroupName)?.forEach(ipAddress => {
+    platform.log.debug(`Deleting method context for: ${ipAddress} ${method}`);
+    clearTimeout(requestQueue[ipAddress][method].timeout);
+    delete requestQueue[ipAddress][method];
+  });
 }
 
 export function bindSocket(platform: WizSceneControllerPlatform, onReady: () => void) {
